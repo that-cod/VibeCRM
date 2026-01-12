@@ -67,7 +67,7 @@ export default function TablePage({ params }: TablePageProps) {
                     <CardHeader>
                         <CardTitle>Table Not Found</CardTitle>
                         <CardDescription>
-                            The table "{tableName}" does not exist in your active schema.
+                            The table &quot;{tableName}&quot; does not exist in your active schema.
                         </CardDescription>
                         <div className="mt-4">
                             <Link href="/dashboard">

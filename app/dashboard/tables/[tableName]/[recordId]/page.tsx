@@ -153,17 +153,20 @@ export default function RecordDetailPage({ params }: RecordDetailPageProps) {
                                     {getColumnDisplayName(column)}
                                 </dt>
                                 <dd className="text-sm">
-                                    {column.type === 'BOOLEAN' ? (
-                                        record[column.name] ? '✓ Yes' : '✗ No'
-                                    ) : column.type === 'TIMESTAMPTZ' ? (
-                                        record[column.name] ? (
-                                            <span className="text-muted-foreground">
-                                                {formatDistanceToNow(new Date(record[column.name]), { addSuffix: true })}
-                                            </span>
-                                        ) : '—'
-                                    ) : (
-                                        record[column.name] || <span className="text-muted-foreground">—</span>
-                                    )}
+                                    {(() => {
+                                        const value = record?.[column.name];
+                                        if (column.type === 'BOOLEAN') {
+                                            return value ? '✓ Yes' : '✗ No';
+                                        }
+                                        if (column.type === 'TIMESTAMPTZ') {
+                                            return value ? (
+                                                <span className="text-muted-foreground">
+                                                    {formatDistanceToNow(new Date(value as string | Date), { addSuffix: true })}
+                                                </span>
+                                            ) : <span className="text-muted-foreground">—</span>;
+                                        }
+                                        return value ? <>{String(value)}</> : <span className="text-muted-foreground">—</span>;
+                                    })()}
                                 </dd>
                             </div>
                         ))}

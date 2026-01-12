@@ -1,6 +1,6 @@
 /**
  * @fileoverview Dynamic Form Component
- * 
+ *
  * Reasoning:
  * - Renders create/edit forms dynamically from schema
  * - Uses react-hook-form with validation
@@ -36,16 +36,6 @@ export function DynamicForm({ resourceName, mode }: DynamicFormProps) {
   const [isFetching, setIsFetching] = useState(mode === "edit");
   const [initialData, setInitialData] = useState<Record<string, unknown>>({});
 
-  if (!resource) {
-    return (
-      <Card>
-        <CardContent className="py-8 text-center text-muted-foreground">
-          Resource "{resourceName}" not found
-        </CardContent>
-      </Card>
-    );
-  }
-
   const formFields = resourceRegistry.getFormFields(resourceName);
   const recordId = mode === "edit" ? params.id as string : undefined;
 
@@ -55,7 +45,7 @@ export function DynamicForm({ resourceName, mode }: DynamicFormProps) {
       const fetchData = async () => {
         try {
           const { data, error } = await supabase
-            .from(resource.plural_name)
+            .from(resource?.plural_name || resourceName)
             .select("*")
             .eq("id", recordId)
             .single();
@@ -71,15 +61,17 @@ export function DynamicForm({ resourceName, mode }: DynamicFormProps) {
         }
       };
       fetchData();
+    } else if (mode === "edit") {
+      setIsFetching(false);
     }
-  }, [mode, recordId, resource.plural_name, supabase]);
+  }, [mode, recordId, resource?.plural_name, resourceName, supabase]);
 
   const form = useForm({
     defaultValues: formFields.reduce((acc, field) => {
       acc[field.name] = "";
       return acc;
     }, {} as Record<string, string>),
-    values: Object.keys(initialData).length > 0 
+    values: Object.keys(initialData).length > 0
       ? formFields.reduce((acc, field) => {
           if (field.name in initialData) {
             acc[field.name] = initialData[field.name] as string;
@@ -88,6 +80,16 @@ export function DynamicForm({ resourceName, mode }: DynamicFormProps) {
         }, {} as Record<string, string>)
       : undefined,
   });
+
+  if (!resource) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-muted-foreground">
+          Resource &quot;{resourceName}&quot; not found
+        </CardContent>
+      </Card>
+    );
+  }
 
   const onSubmit = async (data: Record<string, unknown>) => {
     setIsLoading(true);
@@ -139,7 +141,7 @@ export function DynamicForm({ resourceName, mode }: DynamicFormProps) {
           {mode === "create" ? `Create ${resource.singular_label}` : `Edit ${resource.singular_label}`}
         </h1>
         <p className="text-muted-foreground">
-          {mode === "create" 
+          {mode === "create"
             ? `Add a new ${resource.singular_label.toLowerCase()} to your CRM`
             : `Update ${resource.singular_label.toLowerCase()} information`
           }
@@ -171,10 +173,10 @@ export function DynamicForm({ resourceName, mode }: DynamicFormProps) {
               Cancel
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading 
-                ? "Saving..." 
-                : mode === "create" 
-                  ? `Create ${resource.singular_label}` 
+              {isLoading
+                ? "Saving..."
+                : mode === "create"
+                  ? `Create ${resource.singular_label}`
                   : "Save Changes"
               }
             </Button>

@@ -67,7 +67,7 @@ export default function CodeGenerateDemo() {
       <Card className="mb-8">
         <CardHeader>
           <CardTitle>Describe Your CRM</CardTitle>
-          <CardDescription>Example: "Build a sales CRM to track deals, companies, and contacts"</CardDescription>
+          <CardDescription>            Example: &quot;Build a sales CRM to track deals, companies, and contacts&quot;</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Textarea

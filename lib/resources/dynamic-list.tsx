@@ -1,6 +1,6 @@
 /**
  * @fileoverview Dynamic List Component
- * 
+ *
  * Reasoning:
  * - Renders a list view for any resource using useTableData
  * - Dynamically generates columns from schema
@@ -39,20 +39,9 @@ interface DynamicListProps {
 
 export function DynamicList({ resourceName }: DynamicListProps) {
   const resource = resourceRegistry.get(resourceName);
-  
-  if (!resource) {
-    return (
-      <Card>
-        <CardContent className="py-8 text-center text-muted-foreground">
-          Resource "{resourceName}" not found
-        </CardContent>
-      </Card>
-    );
-  }
-
   const listFields = resourceRegistry.getListFields(resourceName);
   const [search, setSearch] = useState("");
-  
+
   const {
     data,
     isLoading,
@@ -63,7 +52,17 @@ export function DynamicList({ resourceName }: DynamicListProps) {
     setSorting,
     setFilters,
     setSearch: setTableSearch,
-  } = useTableData(resource.plural_name);
+  } = useTableData(resource?.plural_name || resourceName);
+
+  if (!resource) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-muted-foreground">
+          Resource &quot;{resourceName}&quot; not found
+        </CardContent>
+      </Card>
+    );
+  }
 
   const handleSearch = (value: string) => {
     setSearch(value);
@@ -189,7 +188,6 @@ export function DynamicList({ resourceName }: DynamicListProps) {
             value={pagination.pageSize}
             onChange={(e) => {
               const newSize = Number(e.target.value);
-              // Would need to update pageSize in the hook
             }}
             className="text-sm border rounded px-2 py-1"
           >

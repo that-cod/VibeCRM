@@ -98,7 +98,7 @@ export function SimpleDataTable({ tableSchema }: SimpleDataTableProps) {
                 return <span className="text-sm">{value ? '✓ Yes' : '✗ No'}</span>
             case 'TIMESTAMPTZ':
                 return <span className="text-sm text-muted-foreground">
-                    {formatDistanceToNow(new Date(value), { addSuffix: true })}
+                    {formatDistanceToNow(new Date(value as string | Date), { addSuffix: true })}
                 </span>
             case 'NUMERIC':
                 return <span className="text-sm font-mono">{Number(value).toLocaleString()}</span>

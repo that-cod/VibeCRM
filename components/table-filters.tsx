@@ -88,7 +88,7 @@ export function TableFilters({
                     {searchQuery && (
                         <Card className="inline-flex items-center gap-2 px-3 py-1.5 text-sm">
                             <Search className="h-3 w-3" />
-                            <span>Search: "{searchQuery}"</span>
+                            <span>Search: &quot;{searchQuery}&quot;</span>
                             <button
                                 onClick={() => handleSearchChange("")}
                                 className="hover:text-foreground"
@@ -102,7 +102,7 @@ export function TableFilters({
                         <Card key={index} className="inline-flex items-center gap-2 px-3 py-1.5 text-sm">
                             <span className="font-medium">{filter.column}</span>
                             <span className="text-muted-foreground">{filter.operator}</span>
-                            <span>"{String(filter.value)}"</span>
+                            <span>&quot;{String(filter.value)}&quot;</span>
                             <button
                                 onClick={() => handleRemoveFilter(index)}
                                 className="hover:text-foreground"

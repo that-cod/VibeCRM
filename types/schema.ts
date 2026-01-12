@@ -50,6 +50,13 @@ export interface ColumnDefinition {
         column: string;
         onDelete: CascadeAction;
     };
+    ui_hints?: {
+        display_name?: string;
+        filterable?: boolean;
+        sortable?: boolean;
+        mobile_priority?: number;
+        type?: "currency" | "url" | "email" | "phone" | "textarea" | "enum";
+    };
 }
 
 /**

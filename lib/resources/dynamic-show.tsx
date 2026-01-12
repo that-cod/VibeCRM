@@ -80,7 +80,7 @@ export function DynamicShow({ resourceName }: DynamicShowProps) {
     return (
       <Card>
         <CardContent className="py-8 text-center text-muted-foreground">
-          Resource "{resourceName}" not found
+          Resource &quot;{resourceName}&quot; not found
         </CardContent>
       </Card>
     );
