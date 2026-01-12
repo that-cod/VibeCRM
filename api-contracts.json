@@ -1,0 +1,198 @@
+{
+    "version": "1.0.0",
+    "base_url": "/api/v1",
+    "architecture": {
+        "multi_tenancy": "RLS-based (Row-Level Security)",
+        "auth_provider": "Supabase Auth",
+        "state_management": "Refine hooks with optimistic updates (last-write-wins)"
+    },
+    "entities": {
+        "users": {
+            "source": "auth.users (Supabase Auth managed)",
+            "description": "Authenticated users of VibeCRM",
+            "fields": {
+                "id": "uuid (primary key)",
+                "email": "string",
+                "created_at": "timestamptz"
+            }
+        },
+        "projects": {
+            "id": "uuid (primary key)",
+            "user_id": "uuid (references auth.users)",
+            "name": "string",
+            "description": "text",
+            "created_at": "timestamptz",
+            "updated_at": "timestamptz",
+            "notes": "One project per user. Contains the user's CRM configuration."
+        },
+        "vibe_configs": {
+            "id": "uuid (primary key)",
+            "project_id": "uuid (references projects)",
+            "user_id": "uuid (references auth.users)",
+            "schema_version": "string (semver: 1.0.0)",
+            "schema_json": "jsonb (full CRM schema definition)",
+            "is_active": "boolean (only one active per project)",
+            "created_at": "timestamptz",
+            "notes": "Stores AI-generated CRM schemas. No rollback support in MVP."
+        },
+        "decision_traces": {
+            "id": "uuid (primary key)",
+            "project_id": "uuid (references projects)",
+            "user_id": "uuid (references auth.users)",
+            "intent": "text (user's original prompt)",
+            "action": "string (what was generated/modified)",
+            "precedent": "text (AI's reasoning)",
+            "version": "string (schema version this trace relates to)",
+            "timestamp": "timestamptz",
+            "notes": "Context graph for AI transparency. Powers Vibe Replay feature."
+        }
+    },
+    "dynamic_entities": {
+        "description": "User-generated CRM tables (deals, companies, contacts, etc.)",
+        "structure": {
+            "all_tables_must_include": {
+                "id": "uuid PRIMARY KEY DEFAULT gen_random_uuid()",
+                "user_id": "uuid REFERENCES auth.users(id) NOT NULL",
+                "created_at": "timestamptz DEFAULT NOW() NOT NULL",
+                "updated_at": "timestamptz DEFAULT NOW() NOT NULL"
+            },
+            "rls_policy_template": "CREATE POLICY 'user_isolation' ON {table_name} FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());",
+            "max_limits": {
+                "tables_per_project": 15,
+                "columns_per_table": 50,
+                "relationship_nesting": 3
+            }
+        }
+    },
+    "endpoints": {
+        "generate": {
+            "method": "POST",
+            "path": "/api/v1/generate",
+            "description": "Generate CRM schema from natural language prompt",
+            "auth_required": true,
+            "request_body": {
+                "prompt": "string (user's CRM requirements)",
+                "project_id": "uuid (optional, for schema modifications)"
+            },
+            "response": {
+                "schema_json": "CRMSchema (validated against SCHEMA_VALIDATION_SPEC)",
+                "decision_trace_id": "uuid (reference to decision_traces record)",
+                "validation_warnings": "string[] (non-blocking issues)"
+            },
+            "validations": [
+                "Quota check (free tier: 10 requests/day)",
+                "Intent classification (CREATE/MODIFY/RELATE only)",
+                "Entity count estimation (max 15 tables)",
+                "Reserved keyword detection",
+                "Circular dependency prevention"
+            ]
+        },
+        "provision": {
+            "method": "POST",
+            "path": "/api/v1/provision",
+            "description": "Provision validated schema to Supabase (NEVER accepts raw SQL)",
+            "auth_required": true,
+            "request_body": {
+                "schema_json": "CRMSchema (must be pre-validated)",
+                "project_id": "uuid",
+                "confirmation_token": "string (for destructive operations)"
+            },
+            "response": {
+                "migration_applied": "boolean",
+                "tables_created": "string[] (table names)",
+                "rls_policies_created": "number",
+                "vibe_config_id": "uuid (reference to active schema)"
+            },
+            "safety_checks": [
+                "Validate schema_json against Zod schema",
+                "Generate SQL using safe template builder (NO raw SQL)",
+                "Wrap in transaction (rollback on error)",
+                "Create RLS policies for all tables",
+                "Lock concurrent schema modifications (per project)"
+            ]
+        },
+        "vibe_replay": {
+            "method": "GET",
+            "path": "/api/v1/vibe-replay/:project_id",
+            "description": "Fetch AI decision history for Vibe Replay UI",
+            "auth_required": true,
+            "response": {
+                "traces": "DecisionTrace[] (ordered by timestamp desc)",
+                "schema_versions": "VibeConfig[] (version history)",
+                "current_schema": "CRMSchema (active configuration)"
+            }
+        },
+        "schema_lock": {
+            "method": "POST",
+            "path": "/api/v1/schema-lock/:project_id",
+            "description": "Acquire lock before schema modification (prevents concurrent edits)",
+            "auth_required": true,
+            "response": {
+                "lock_acquired": "boolean",
+                "lock_expires_at": "timestamptz (5 minute TTL)",
+                "locked_by": "uuid (user_id holding lock)"
+            }
+        }
+    },
+    "rls_policies": {
+        "projects": [
+            "CREATE POLICY user_projects ON projects FOR ALL TO authenticated USING (user_id = auth.uid())"
+        ],
+        "vibe_configs": [
+            "CREATE POLICY user_configs ON vibe_configs FOR ALL TO authenticated USING (user_id = auth.uid())"
+        ],
+        "decision_traces": [
+            "CREATE POLICY user_traces ON decision_traces FOR ALL TO authenticated USING (user_id = auth.uid())"
+        ],
+        "dynamic_tables": [
+            "All user-generated tables get: CREATE POLICY user_isolation ON {table} FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid())"
+        ]
+    },
+    "security_notes": {
+        "sql_injection_prevention": "NEVER accept raw SQL. All DDL generated via validated schema → SQL template builder.",
+        "rls_enforcement": "ALL data access filtered by auth.uid(). No application-level permission checks.",
+        "destructive_operations": "Require double confirmation: 1) Warning message 2) Typed confirmation",
+        "schema_lock": "Only one user can modify a project's schema at a time (5-minute lock TTL)"
+    },
+    "validation_pipeline": {
+        "pre_generation": [
+            "validateQuota()",
+            "classifyIntent()",
+            "estimateEntityCount()"
+        ],
+        "post_generation": [
+            "validateJSONStructure() via Zod",
+            "validateNoReservedWords()",
+            "validateForeignKeys()",
+            "detectCircularDependencies()",
+            "validateAuditColumns()",
+            "validateUIHints()"
+        ],
+        "pre_provisioning": [
+            "acquireSchemLock()",
+            "generateSafeSQL() from schema_json",
+            "createRLSPolicies()",
+            "wrapInTransaction()"
+        ]
+    },
+    "schema_evolution": {
+        "strategy": "Supabase migrations with Claude-generated ALTER statements",
+        "conflict_resolution": "Last-write-wins (new schema prioritized)",
+        "rollback_support": "false (MVP limitation)",
+        "destructive_ops": [
+            "DROP TABLE",
+            "DROP COLUMN",
+            "ALTER COLUMN TYPE (breaking changes)"
+        ],
+        "confirmation_flow": [
+            "1. Show impact warning (rows affected)",
+            "2. Require typed confirmation",
+            "3. Execute with transaction rollback on error"
+        ]
+    },
+    "type_generation": {
+        "command": "npx supabase gen types typescript --project-id <PROJECT_ID>",
+        "output_file": "types/supabase.ts",
+        "usage": "import { Database } from '@/types/supabase'; type Deal = Database['public']['Tables']['deals']['Row'];"
+    }
+}
