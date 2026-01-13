@@ -4,16 +4,19 @@
  * Reasoning:
  * - Visualizes AI decision history as an interactive timeline
  * - Shows intent → action → outcome flow
- * - Allows viewing schema state at any point in time
+ * - Includes schema diff viewer and rollback functionality
  */
 
 "use client";
 
 import { useState } from "react";
 import { useVibeReplay, DecisionTrace } from "@/lib/hooks/use-vibe-replay";
+import { useRollback } from "@/lib/hooks/use-rollback";
+import { SchemaDiff } from "@/components/schema-diff";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   Play,
@@ -25,8 +28,13 @@ import {
   Database,
   Table2,
   Eye,
+  RotateCcw,
+  AlertTriangle,
+  GitCompare,
+  CheckCircle2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 
 interface VibeReplayTimelineProps {
   projectId: string | null;
@@ -35,8 +43,12 @@ interface VibeReplayTimelineProps {
 
 export function VibeReplayTimeline({ projectId, projectName }: VibeReplayTimelineProps) {
   const { data, isLoading, error, refetch } = useVibeReplay(projectId);
+  const { rollback, isLoading: isRollingBack } = useRollback(projectId);
   const [expandedTraces, setExpandedTraces] = useState<Set<string>>(new Set());
   const [selectedTrace, setSelectedTrace] = useState<DecisionTrace | null>(null);
+  const [rollbackVersion, setRollbackVersion] = useState<string | null>(null);
+  const [rollbackReason, setRollbackReason] = useState("");
+  const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
 
   if (isLoading) {
     return (
@@ -101,6 +113,25 @@ export function VibeReplayTimeline({ projectId, projectName }: VibeReplayTimelin
     }
     return <Sparkles className="h-4 w-4" />;
   };
+
+  const handleRollback = async () => {
+    if (!rollbackVersion) return;
+
+    const result = await rollback(rollbackVersion, rollbackReason);
+
+    if (result) {
+      toast.success(`Rolled back to v${rollbackVersion}`, {
+        description: `New version: v${result.new_version}`,
+      });
+      setShowRollbackConfirm(false);
+      setRollbackReason("");
+      refetch();
+    } else {
+      toast.error("Rollback failed");
+    }
+  };
+
+  const currentVersion = data.schema_versions.find((v) => v.is_active)?.schema_version;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
@@ -184,38 +215,43 @@ export function VibeReplayTimeline({ projectId, projectName }: VibeReplayTimelin
                               </div>
                             )}
 
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              {trace.schema_before && (
-                                <div>
-                                  <h5 className="text-xs font-medium mb-1 text-muted-foreground">
-                                    Before
-                                  </h5>
-                                  <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
-                                    {JSON.stringify(trace.schema_before, null, 2)}
-                                  </pre>
-                                </div>
-                              )}
-                              {trace.schema_after && (
-                                <div>
-                                  <h5 className="text-xs font-medium mb-1 text-muted-foreground">
-                                    After
-                                  </h5>
-                                  <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
-                                    {JSON.stringify(trace.schema_after, null, 2)}
-                                  </pre>
-                                </div>
+                            {(trace.schema_before || trace.schema_after) && (
+                              <div className="mb-4">
+                                <h5 className="text-xs font-medium mb-2 text-muted-foreground flex items-center gap-1">
+                                  <GitCompare className="h-3 w-3" />
+                                  Schema Changes
+                                </h5>
+                                <SchemaDiff
+                                  schemaBefore={trace.schema_before as any}
+                                  schemaAfter={trace.schema_after as any}
+                                />
+                              </div>
+                            )}
+
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedTrace(trace)}
+                              >
+                                <Eye className="h-4 w-4 mr-2" />
+                                View Full Schema
+                              </Button>
+
+                              {currentVersion && trace.version !== currentVersion && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setRollbackVersion(trace.version);
+                                    setShowRollbackConfirm(true);
+                                  }}
+                                >
+                                  <RotateCcw className="h-4 w-4 mr-2" />
+                                  Rollback to v{trace.version}
+                                </Button>
                               )}
                             </div>
-
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="mt-4"
-                              onClick={() => setSelectedTrace(trace)}
-                            >
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Schema State
-                            </Button>
                           </div>
                         )}
                       </CardContent>
@@ -251,7 +287,8 @@ export function VibeReplayTimeline({ projectId, projectName }: VibeReplayTimelin
                     v{version.schema_version}
                   </Badge>
                   {version.is_active && (
-                    <span className="text-xs text-primary font-medium">
+                    <span className="text-xs text-primary font-medium flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
                       Current
                     </span>
                   )}
@@ -272,6 +309,21 @@ export function VibeReplayTimeline({ projectId, projectName }: VibeReplayTimelin
           trace={selectedTrace}
           open={!!selectedTrace}
           onClose={() => setSelectedTrace(null)}
+        />
+      )}
+
+      {showRollbackConfirm && rollbackVersion && (
+        <RollbackConfirmModal
+          version={rollbackVersion}
+          currentVersion={currentVersion || ""}
+          reason={rollbackReason}
+          onReasonChange={setRollbackReason}
+          onConfirm={handleRollback}
+          onCancel={() => {
+            setShowRollbackConfirm(false);
+            setRollbackReason("");
+          }}
+          isLoading={isRollingBack}
         />
       )}
     </div>
@@ -324,6 +376,82 @@ function SchemaDetailModal({
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={onClose}>
               Close
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function RollbackConfirmModal({
+  version,
+  currentVersion,
+  reason,
+  onReasonChange,
+  onConfirm,
+  onCancel,
+  isLoading,
+}: {
+  version: string;
+  currentVersion: string;
+  reason: string;
+  onReasonChange: (reason: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isLoading: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <Card
+        className="w-full max-w-md m-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-amber-600">
+            <AlertTriangle className="h-5 w-5" />
+            Confirm Rollback
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="text-sm space-y-2">
+            <p>
+              You are about to rollback from <strong>v{currentVersion}</strong> to{" "}
+              <strong>v{version}</strong>.
+            </p>
+            <p className="text-muted-foreground">
+              A new version will be created with the schema from v{version}.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Reason for rollback (optional)</label>
+            <Input
+              placeholder="Why are you rolling back?"
+              value={reason}
+              onChange={(e) => onReasonChange(e.target.value)}
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+              Cancel
+            </Button>
+            <Button onClick={onConfirm} disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  Rolling back...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Confirm Rollback
+                </>
+              )}
             </Button>
           </div>
         </CardContent>
