@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     // Step 3: Provision database tables
     let provisionResult = null;
     if (auto_provision) {
-      provisionResult = await provisionDatabase(result.projectPlan);
+      provisionResult = await provisionDatabase(result.projectPlan, project_id || "", user.id);
     }
 
     // Step 4: Save config to Supabase

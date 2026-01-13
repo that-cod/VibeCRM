@@ -1,24 +1,32 @@
 /**
  * @fileoverview Database Provisioner
- * 
+ *
  * Reasoning:
  * - Creates database tables from generated schema
  * - Generates proper SQL with RLS policies
  * - Handles foreign key constraints
  * - Executes in Supabase via RPC or direct SQL
+ * - Logs all decisions to decision_traces for Vibe Replay
  */
 
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { ProjectPlan, Resource } from "@/lib/code-generator/schemas";
+import type { CRMSchema } from "@/types/schema";
 
 export interface ProvisionResult {
   success: boolean;
   tables_created: string[];
   errors: string[];
   sql_executed: string;
+  decision_trace_id?: string;
 }
 
-export async function provisionDatabase(plan: ProjectPlan): Promise<ProvisionResult> {
+export async function provisionDatabase(
+  plan: ProjectPlan,
+  projectId: string,
+  userId: string,
+  schemaBefore?: CRMSchema
+): Promise<ProvisionResult> {
   const tablesCreated: string[] = [];
   const errors: string[] = [];
   const sqlStatements: string[] = [];
@@ -42,7 +50,7 @@ export async function provisionDatabase(plan: ProjectPlan): Promise<ProvisionRes
     if (rpcError) {
       // Fallback: Try direct SQL execution
       const { error: directError } = await supabaseAdmin.from("vibe_configs").select("id").limit(1);
-      
+
       if (!directError) {
         // RPC function doesn't exist, but we can still try to execute
         // Use a different approach - create tables one by one
@@ -58,11 +66,25 @@ export async function provisionDatabase(plan: ProjectPlan): Promise<ProvisionRes
       }
     }
 
+    // Log the decision to decision_traces
+    const schemaAfter = generateSchemaFromPlan(plan);
+    const decisionTrace = await logDecision({
+      projectId,
+      userId,
+      intent: plan.description || "Generated CRM schema",
+      action: `Created ${tablesCreated.length} table(s): ${tablesCreated.join(", ")}`,
+      precedent: "Standard VibeCRM pattern: Create tables with user isolation RLS policies",
+      version: plan.version || "1.0.0",
+      schemaBefore,
+      schemaAfter,
+    });
+
     return {
       success: errors.length === 0,
       tables_created: tablesCreated,
       errors,
       sql_executed: combinedSQL,
+      decision_trace_id: decisionTrace?.id,
     };
 
   } catch (err: any) {
@@ -73,6 +95,94 @@ export async function provisionDatabase(plan: ProjectPlan): Promise<ProvisionRes
       sql_executed: sqlStatements.join("\n\n"),
     };
   }
+}
+
+/**
+ * Log a decision to decision_traces for Vibe Replay
+ */
+async function logDecision({
+  projectId,
+  userId,
+  intent,
+  action,
+  precedent,
+  version,
+  schemaBefore,
+  schemaAfter,
+}: {
+  projectId: string;
+  userId: string;
+  intent: string;
+  action: string;
+  precedent?: string;
+  version: string;
+  schemaBefore?: CRMSchema;
+  schemaAfter?: CRMSchema;
+}) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("decision_traces")
+      .insert({
+        project_id: projectId,
+        user_id: userId,
+        intent,
+        action,
+        precedent,
+        version,
+        schema_before: schemaBefore,
+        schema_after: schemaAfter,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to log decision trace:", error);
+      return null;
+    }
+
+    return data;
+  } catch (err) {
+    console.error("Error logging decision trace:", err);
+    return null;
+  }
+}
+
+/**
+ * Generate a CRMSchema from a ProjectPlan
+ */
+function generateSchemaFromPlan(plan: ProjectPlan): CRMSchema {
+  return {
+    version: plan.version || "1.0.0",
+    tables: plan.resources.map((resource) => ({
+      name: resource.plural_name,
+      columns: [
+        { name: "id", type: "UUID" as const, nullable: false },
+        { name: "user_id", type: "UUID" as const, nullable: false },
+        { name: "created_at", type: "TIMESTAMPTZ" as const, nullable: false },
+        { name: "updated_at", type: "TIMESTAMPTZ" as const, nullable: false },
+        ...resource.fields.map((field) => ({
+          name: field.name,
+          type: field.type.toUpperCase() as any,
+          nullable: !field.required,
+        })),
+      ],
+      ui_hints: {
+        icon: resource.icon || "table",
+        label: resource.plural_label,
+        description: resource.description,
+        columns: {},
+      },
+    })),
+    relationships: plan.resources.flatMap((resource) =>
+      (resource.relationships || []).map((rel) => ({
+        from_table: resource.plural_name,
+        from_column: rel.foreign_key_column,
+        to_table: rel.related_resource,
+        to_column: "id",
+        type: "one-to-many" as const,
+      }))
+    ),
+  };
 }
 
 /**
