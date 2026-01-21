@@ -11,13 +11,11 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { getEnvConfig } from "@/lib/config/env-validator";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error("Missing Supabase environment variables");
-}
+const env = getEnvConfig();
+const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = env.SUPABASE_SERVICE_ROLE_KEY;
 
 /**
  * Server-side Supabase client with service role key (bypasses RLS)
@@ -35,9 +33,10 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
  * Use this for user-scoped operations
  */
 export function getSupabaseClient(accessToken?: string) {
+    const env = getEnvConfig();
     return createClient(
-        supabaseUrl,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        env.NEXT_PUBLIC_SUPABASE_URL,
+        env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
         accessToken
             ? {
                 global: {

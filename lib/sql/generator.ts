@@ -13,14 +13,37 @@
 import type { CRMSchema, TableDefinition, ColumnDefinition, CascadeAction } from "@/types/schema";
 
 /**
+ * Sanitize SQL identifier (table/column names) to prevent SQL injection
+ * PostgreSQL identifiers must start with letter/underscore and contain only alphanumeric/underscore
+ */
+function sanitizeIdentifier(identifier: string): string {
+    // Remove any characters that aren't alphanumeric or underscore
+    const sanitized = identifier.replace(/[^a-zA-Z0-9_]/g, '');
+    
+    // Ensure it starts with a letter or underscore
+    if (!/^[a-zA-Z_]/.test(sanitized)) {
+        throw new Error(`Invalid identifier: ${identifier}. Must start with letter or underscore.`);
+    }
+    
+    // Limit length to PostgreSQL's 63 character limit
+    if (sanitized.length > 63) {
+        throw new Error(`Identifier too long: ${identifier}. Max 63 characters.`);
+    }
+    
+    return sanitized;
+}
+
+/**
  * Generate CREATE TABLE statement for a single table
  */
 function generateCreateTableSQL(table: TableDefinition): string {
-    let sql = `CREATE TABLE IF NOT EXISTS ${table.name} (\n`;
+    const tableName = sanitizeIdentifier(table.name);
+    let sql = `CREATE TABLE IF NOT EXISTS ${tableName} (\n`;
 
     // Generate column definitions
     const columnDefs = table.columns.map((col) => {
-        let def = `  ${col.name} ${col.type}`;
+        const colName = sanitizeIdentifier(col.name);
+        let def = `  ${colName} ${col.type}`;
 
         if (col.primaryKey) {
             def += " PRIMARY KEY";
@@ -53,15 +76,19 @@ function generateCreateTableSQL(table: TableDefinition): string {
  */
 function generateForeignKeySQL(table: TableDefinition): string {
     const fkStatements: string[] = [];
+    const tableName = sanitizeIdentifier(table.name);
 
     table.columns.forEach((col) => {
         if (col.references) {
-            const constraintName = `fk_${table.name}_${col.name}`;
+            const colName = sanitizeIdentifier(col.name);
+            const refTable = sanitizeIdentifier(col.references.table);
+            const refCol = sanitizeIdentifier(col.references.column);
+            const constraintName = sanitizeIdentifier(`fk_${table.name}_${col.name}`);
             fkStatements.push(`
-ALTER TABLE ${table.name}
+ALTER TABLE ${tableName}
   ADD CONSTRAINT ${constraintName}
-  FOREIGN KEY (${col.name})
-  REFERENCES ${col.references.table}(${col.references.column})
+  FOREIGN KEY (${colName})
+  REFERENCES ${refTable}(${refCol})
   ON DELETE ${col.references.onDelete};
       `);
         }
@@ -78,10 +105,13 @@ function generateIndexSQL(table: TableDefinition): string {
         return "";
     }
 
+    const tableName = sanitizeIdentifier(table.name);
     return table.indexes
-        .map((idx) => {
-            const uniqueClause = idx.unique ? "UNIQUE " : "";
-            return `CREATE ${uniqueClause}INDEX IF NOT EXISTS ${idx.name} ON ${table.name}(${idx.columns.join(", ")});`;
+        .map((index) => {
+            const sanitizedCols = index.columns.map(c => sanitizeIdentifier(c));
+            const indexName = sanitizeIdentifier(`idx_${table.name}_${index.columns.join("_")}`);
+            const unique = index.unique ? "UNIQUE " : "";
+            return `CREATE ${unique}INDEX IF NOT EXISTS ${indexName} ON ${tableName}(${sanitizedCols.join(", ")});`;
         })
         .join("\n");
 }
@@ -91,12 +121,13 @@ function generateIndexSQL(table: TableDefinition): string {
  * All user-generated tables must have RLS to enforce data isolation
  */
 function generateRLSPolicySQL(tableName: string): string {
+    const sanitizedTable = sanitizeIdentifier(tableName);
     return `
--- Enable RLS on ${tableName}
-ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY;
+-- Enable RLS on ${sanitizedTable}
+ALTER TABLE ${sanitizedTable} ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policy for user isolation
-CREATE POLICY user_isolation ON ${tableName}
+CREATE POLICY user_isolation ON ${sanitizedTable}
   FOR ALL
   TO authenticated
   USING (user_id = auth.uid())
@@ -108,10 +139,12 @@ CREATE POLICY user_isolation ON ${tableName}
  * Generate trigger for auto-updating updated_at timestamp
  */
 function generateUpdatedAtTriggerSQL(tableName: string): string {
+    const sanitizedTable = sanitizeIdentifier(tableName);
+    const triggerName = sanitizeIdentifier(`${tableName}_updated_at`);
     return `
--- Create trigger for ${tableName}.updated_at
-CREATE TRIGGER ${tableName}_updated_at
-  BEFORE UPDATE ON ${tableName}
+-- Create trigger for ${sanitizedTable}.updated_at
+CREATE TRIGGER ${triggerName}
+  BEFORE UPDATE ON ${sanitizedTable}
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
   `;

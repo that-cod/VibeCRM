@@ -43,7 +43,7 @@ export async function provisionDatabase(
     const combinedSQL = sqlStatements.join("\n\n");
 
     // Try to execute via RPC function first (safer)
-    const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc("execute_sql", {
+    const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc("exec_sql", {
       sql_query: combinedSQL,
     });
 
@@ -313,18 +313,13 @@ function mapFieldTypeToPostgres(fieldType: string): string {
 }
 
 /**
- * Execute SQL directly (fallback when RPC not available)
+ * Execute SQL directly via exec_sql RPC function
+ * This is used as a fallback when batch execution fails
  */
 async function executeSQLDirectly(sql: string): Promise<void> {
-  // This is a workaround since Supabase doesn't allow direct SQL execution from JS
-  // In a real app, you'd create a PostgreSQL function to execute SQL
-  // For now, we'll log the SQL that should be executed
-  console.log("SQL to execute:", sql);
-  
-  // Alternative: Use the execute_sql RPC if available
-  const { error } = await supabaseAdmin.rpc("execute_sql", { sql_query: sql });
+  const { error } = await supabaseAdmin.rpc("exec_sql", { sql_query: sql });
   if (error) {
-    throw new Error(error.message);
+    throw new Error(`SQL execution failed: ${error.message}`);
   }
 }
 
@@ -333,7 +328,7 @@ async function executeSQLDirectly(sql: string): Promise<void> {
  */
 export async function dropTable(tableName: string): Promise<boolean> {
   try {
-    const { error } = await supabaseAdmin.rpc("execute_sql", {
+    const { error } = await supabaseAdmin.rpc("exec_sql", {
       sql_query: `DROP TABLE IF EXISTS ${tableName} CASCADE;`,
     });
     return !error;

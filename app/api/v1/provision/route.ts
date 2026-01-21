@@ -16,10 +16,13 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { ProvisionSchemaRequestSchema } from "@/lib/validators/schema";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { CRMSchemaValidator } from "@/lib/validators/schema";
 import { validateAllSchemaRules } from "@/lib/validators/schema-rules";
 import { generateProvisioningSQL } from "@/lib/sql/generator";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { convertSchemaToResources } from "@/lib/integration/schema-to-resource";
+import { resourceRegistry } from "@/lib/resources/registry";
+import type { CRMSchema } from "@/types/schema";
 
 export async function POST(request: NextRequest) {
     try {
@@ -127,11 +130,23 @@ export async function POST(request: NextRequest) {
             // Non-fatal - schema is already provisioned
         }
 
-        // 9. Count provisioned resources
+        // 9. Register resources for dynamic UI
+        try {
+            const resources = convertSchemaToResources(schema_json);
+            resources.forEach(resource => {
+                resourceRegistry.register(resource);
+            });
+            console.log(`Registered ${resources.length} resources to dynamic registry`);
+        } catch (regError) {
+            console.error("Failed to register resources:", regError);
+            // Non-fatal - tables are already provisioned
+        }
+
+        // 10. Count provisioned resources
         const tablesCreated = schema_json.tables.map(t => t.name);
         const rlsPoliciesCreated = schema_json.tables.length; // One policy per table
 
-        // 10. Return success response
+        // 11. Return success response
         return NextResponse.json({
             success: true,
             migration_applied: true,

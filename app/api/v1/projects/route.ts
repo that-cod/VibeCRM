@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createProject, getProject, getUserProjects, updateProject, deleteProject, getProjectStats } from "@/lib/projects/project-manager";
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +11,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = isDev ? "00000000-0000-0000-0000-000000000000" : "user_id";
+    let userId: string;
+    if (isDev) {
+      userId = "00000000-0000-0000-0000-000000000000";
+    } else {
+      const token = authHeader!.replace("Bearer ", "");
+      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+      if (authError || !user) {
+        return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+      }
+      userId = user.id;
+    }
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get("project_id");
     const statsOnly = searchParams.get("stats") === "true";
@@ -45,7 +56,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = isDev ? "00000000-0000-0000-0000-000000000000" : "user_id";
+    let userId: string;
+    if (isDev) {
+      userId = "00000000-0000-0000-0000-000000000000";
+    } else {
+      const token = authHeader!.replace("Bearer ", "");
+      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+      if (authError || !user) {
+        return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+      }
+      userId = user.id;
+    }
     const body = await request.json();
     const { name, description } = body;
 
@@ -74,7 +95,17 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = isDev ? "00000000-0000-0000-0000-000000000000" : "user_id";
+    let userId: string;
+    if (isDev) {
+      userId = "00000000-0000-0000-0000-000000000000";
+    } else {
+      const token = authHeader!.replace("Bearer ", "");
+      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+      if (authError || !user) {
+        return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+      }
+      userId = user.id;
+    }
     const body = await request.json();
     const { project_id, name, description, is_active } = body;
 
@@ -108,7 +139,17 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = isDev ? "00000000-0000-0000-0000-000000000000" : "user_id";
+    let userId: string;
+    if (isDev) {
+      userId = "00000000-0000-0000-0000-000000000000";
+    } else {
+      const token = authHeader!.replace("Bearer ", "");
+      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+      if (authError || !user) {
+        return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+      }
+      userId = user.id;
+    }
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get("project_id");
 

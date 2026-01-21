@@ -132,7 +132,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = isDev ? "00000000-0000-0000-0000-000000000000" : "user_id";
+    let userId: string;
+    if (isDev) {
+      userId = "00000000-0000-0000-0000-000000000000";
+    } else {
+      const token = authHeader!.replace("Bearer ", "");
+      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+      if (authError || !user) {
+        return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+      }
+      userId = user.id;
+    }
     const { searchParams } = new URL(request.url);
     const project_id = searchParams.get("project_id");
 

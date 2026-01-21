@@ -75,6 +75,27 @@ export default function Home() {
         setError(null)
 
         try {
+            // Step 1: Create a project first (in dev mode)
+            const projectResponse = await fetch("/api/v1/projects", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    name: "My CRM Project",
+                    description: "Generated from homepage"
+                }),
+            })
+
+            if (!projectResponse.ok) {
+                const errorData = await projectResponse.json()
+                throw new Error(errorData.error || "Failed to create project")
+            }
+
+            const projectData = await projectResponse.json()
+            const projectId = projectData.project.id
+
+            // Step 2: Provision the schema
             const response = await fetch("/api/v1/provision", {
                 method: "POST",
                 headers: {
@@ -82,7 +103,7 @@ export default function Home() {
                 },
                 body: JSON.stringify({
                     schema_json: generatedSchema,
-                    project_id: "demo-project" // Temporary - will be replaced with real project ID
+                    project_id: projectId
                 }),
             })
 
